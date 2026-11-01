@@ -56,6 +56,7 @@
                     <span>Kembalian</span><strong>Rp {{ number_format((float) $completedTransaction->change_amount, 2, ',', '.') }}</strong>
                 </div>
                 <p>Terima kasih telah berbelanja.</p>
+                <a class="print-again" href="{{ route('kasir.transactions.receipt', $completedTransaction) }}">Unduh PDF</a>
                 <button class="print-again" type="button" onclick="window.print()">Cetak ulang</button>
             </section>
         @endif

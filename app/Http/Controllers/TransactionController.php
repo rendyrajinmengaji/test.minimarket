@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\Transaction;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,17 @@ use Illuminate\View\View;
 
 class TransactionController extends Controller
 {
+    public function downloadReceipt(Transaction $transaction)
+    {
+        abort_unless($transaction->user_id === auth()->id(), 403);
+
+        $transaction->load(['details', 'user']);
+
+        return Pdf::loadView('kasir.receipt-pdf', compact('transaction'))
+            ->setPaper('a5', 'portrait')
+            ->download('struk-'.$transaction->transaction_number.'.pdf');
+    }
+
     public function index(): View
     {
         $products = Product::query()

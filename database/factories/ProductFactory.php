@@ -71,12 +71,16 @@ class ProductFactory extends Factory
             'snack' => [2_000, 75_000],
             default => [3_000, 150_000],
         };
+        $price = fake()->numberBetween(
+            (int) ($priceRange[0] / 1_000),
+            (int) ($priceRange[1] / 1_000)
+        ) * 1_000;
 
         return [
             'name' => fake()->randomElement($catalog[$category]),
             'category' => $category,
             'description' => fake()->optional()->sentence(),
-            'price' => fake()->numberBetween(...$priceRange),
+            'price' => $price,
             'stock' => $stock,
             'image' => null,
             'is_active' => $stock > 0,
