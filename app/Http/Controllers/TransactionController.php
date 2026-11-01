@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\OrderPlaced;
 use App\Models\Product;
 use App\Models\Transaction;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -131,6 +132,8 @@ return view('kasir.index', compact('products', 'transactionNumber'));    }
 
             return $transaction;
         }, 3);
+
+        event(new OrderPlaced($transaction, $request->user()));
 
         return redirect()
             ->route('kasir.index')

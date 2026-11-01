@@ -32,5 +32,24 @@
                 {{ $slot }}
             </main>
         </div>
+        @auth
+            <script>
+                document.addEventListener('DOMContentLoaded', () => {
+                    if (!window.Echo) {
+                        console.error('Laravel Echo belum terinisialisasi.');
+                        return;
+                    }
+
+                    window.Echo
+                        .private('user.{{ auth()->id() }}')
+                        .listen('.order.placed', (event) => {
+                            alert(
+                                `Transaksi #${event.order_id} berhasil dibuat oleh ${event.user_name}. ` +
+                                `Total: Rp ${Number(event.total).toLocaleString('id-ID')}`
+                            );
+                        });
+                });
+            </script>
+        @endauth
     </body>
 </html>

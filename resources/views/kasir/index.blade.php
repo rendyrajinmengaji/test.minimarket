@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Kasir POS | {{ config('app.name', 'Minimarket') }}</title>
     <link rel="stylesheet" href="{{ asset('css/chasier.css') }}">
+    @vite('resources/js/app.js')
     <script src="{{ asset('js/chasier.js') }}" defer></script>
 </head>
 <body class="pos-page">
@@ -114,6 +115,24 @@
             </aside>
         </form>
     </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!window.Echo) {
+                console.error('Laravel Echo belum terinisialisasi.');
+                return;
+            }
+
+            window.Echo
+                .private('user.{{ auth()->id() }}')
+                .listen('.order.placed', (event) => {
+                    alert(
+                        `Transaksi #${event.order_id} berhasil dibuat oleh ${event.user_name}. ` +
+                        `Total: Rp ${Number(event.total).toLocaleString('id-ID')}`
+                    );
+                });
+        });
+    </script>
 
     <script>
         window.cashierConfig = {
