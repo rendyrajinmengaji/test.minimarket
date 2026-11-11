@@ -64,23 +64,12 @@ class ProductFactory extends Factory
 
         $category = fake()->randomElement(array_keys($catalog));
         $stock = fake()->numberBetween(0, 100);
-        $priceRange = match ($category) {
-            'makanan' => [2_000, 100_000],
-            'minuman' => [2_000, 75_000],
-            'sembako' => [5_000, 150_000],
-            'snack' => [2_000, 75_000],
-            default => [3_000, 150_000],
-        };
-        $price = fake()->numberBetween(
-            (int) ($priceRange[0] / 1_000),
-            (int) ($priceRange[1] / 1_000)
-        ) * 1_000;
 
         return [
             'name' => fake()->randomElement($catalog[$category]),
             'category' => $category,
             'description' => fake()->optional()->sentence(),
-            'price' => $price,
+            'price' => 1,
             'stock' => $stock,
             'image' => null,
             'is_active' => $stock > 0,

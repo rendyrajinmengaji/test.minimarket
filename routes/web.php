@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\KasirController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ReceiptController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\LaporanController;
 use Illuminate\Support\Facades\Route;
@@ -42,8 +43,11 @@ Route::middleware('auth')->group(function () {
     Route::middleware('role:kasir')->prefix('kasir')->name('kasir.')->group(function () {
         Route::get('/dashboard', [KasirController::class, 'dashboard'])->name('dashboard');
         Route::get('/', [TransactionController::class, 'index'])->name('index');
+        Route::get('/midtrans/{transaction}/return', [TransactionController::class, 'midtransReturn'])->name('midtrans.return');
+        Route::get('/midtrans/{transaction}/resume', [TransactionController::class, 'resumeMidtrans'])->name('midtrans.resume');
         Route::post('/transaksi', [TransactionController::class, 'store'])->name('transactions.store');
         Route::get('/transaksi/{transaction}/struk', [TransactionController::class, 'downloadReceipt'])->name('transactions.receipt');
+        Route::post('/transaksi/{transaction}/cetak', [ReceiptController::class, 'print'])->name('transactions.print');
     });
 
     Route::get('/laporan-pegawai', [LaporanController::class, 'generatePDF'])->name('laporan.pegawai');

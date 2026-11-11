@@ -7,7 +7,7 @@
     <title>Kasir POS | {{ config('app.name', 'Minimarket') }}</title>
     <link rel="stylesheet" href="{{ asset('css/chasier.css') }}">
     @vite('resources/js/app.js')
-    <script src="{{ asset('js/chasier.js') }}" defer></script>
+    <script src="{{ asset('js/chasier.js') }}?v={{ filemtime(public_path('js/chasier.js')) }}" defer></script>
 </head>
 <body class="pos-page">
     <header class="topbar">
@@ -36,6 +36,12 @@
             </div>
         @endif
         @if (session('status'))<div class="alert alert-success" role="status">{{ session('status') }}</div>@endif
+        @if (session('receiptPrintError'))<div class="alert alert-error" role="alert">{{ session('receiptPrintError') }}</div>@endif
+        @if ($returnedMidtrans?->status === 'failed')
+            <div class="alert alert-error" role="status">
+                Pembayaran Midtrans tidak selesai. Keranjang sudah dipulihkan; pilih metode pembayaran untuk melanjutkan.
+            </div>
+        @endif
 
         @if ($completedTransaction = session('completedTransaction'))
             <section class="receipt" id="receipt" aria-label="Struk transaksi">
@@ -58,6 +64,10 @@
                 </div>
                 <p>Terima kasih telah berbelanja.</p>
                 <a class="print-again" href="{{ route('kasir.transactions.receipt', $completedTransaction) }}">Unduh PDF</a>
+                <form method="POST" action="{{ route('kasir.transactions.print', $completedTransaction) }}">
+                    @csrf
+                    <button class="print-again" type="submit">Cetak ulang thermal</button>
+                </form>
                 <button class="print-again" type="button" onclick="window.print()">Cetak ulang</button>
             </section>
         @endif
@@ -93,7 +103,7 @@
                     <div class="summary-control"><label for="otherFee">Biaya lain (Rp)</label><div class="input-prefix"><span>Rp</span><input id="otherFee" name="other_fee" type="number" min="0" step="1" value="{{ old('other_fee', 0) }}"></div></div>
                 </div>
                 <div class="grand-total"><span>GRAND TOTAL</span><strong id="grandTotalDisplay">Rp 0</strong></div>
-                <div class="paid-block">
+                <div class="paid-block" id="paidBlock">
                     <label for="paidAmount">Uang dibayar</label>
                     <div class="paid-input"><span>Rp</span><input id="paidAmount" name="paid_amount" type="number" min="0" step="1" value="{{ old('paid_amount', '') }}" placeholder="0" required></div>
                     <div class="change-line"><span id="changeLabel">Kembalian</span><strong id="changeDisplay">Rp 0</strong></div>
@@ -106,6 +116,7 @@
                     <option value="credit" @selected(old('payment_method') === 'credit')>Kredit</option>
                     <option value="e_wallet" @selected(old('payment_method') === 'e_wallet')>E-Wallet</option>
                     <option value="transfer" @selected(old('payment_method') === 'transfer')>Transfer</option>
+                    <option value="midtrans" @selected(old('payment_method') === 'midtrans')>Midtrans (Snap Sandbox)</option>
                 </select></div>
                 <div class="action-stack">
                     <button class="pay-button" id="payButton" type="submit"><span>BAYAR & CETAK</span><kbd>F4</kbd></button>
@@ -137,7 +148,9 @@
     <script>
         window.cashierConfig = {
             products: @json($products),
-            initialItems: @json(old('items', [])),
+            initialItems: @json(old('items', $initialItems)),
+            initialTotals: @json($initialTotals),
+            paymentMethod: @json(old('payment_method', $returnedMidtrans?->status === 'failed' ? 'midtrans' : 'cash')),
             transactionNumber: @json($transactionNumber),
             completed: @json((bool) session('completedTransaction')),
         };

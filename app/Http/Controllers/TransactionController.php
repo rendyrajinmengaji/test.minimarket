@@ -5,10 +5,16 @@ namespace App\Http\Controllers;
 use App\Events\OrderPlaced;
 use App\Models\Product;
 use App\Models\Transaction;
+use App\Services\MidtransApiException;
+use App\Services\MidtransService;
+use App\Services\MidtransTransactionUpdater;
+use App\Services\ReceiptPrinter;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -26,19 +32,142 @@ class TransactionController extends Controller
             ->download('struk-'.$transaction->transaction_number.'.pdf');
     }
 
-    public function index(): View
+    public function index(Request $request): View
     {
         $products = Product::query()
             ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name', 'product_code', 'barcode', 'price', 'stock']);
 
+        $returnedMidtrans = null;
+        if ($request->session()->has('midtransReturnTransactionId')) {
+            $returnedMidtrans = Transaction::query()
+                ->whereKey($request->session()->pull('midtransReturnTransactionId'))
+                ->where('user_id', $request->user()->id)
+                ->where('payment_method', 'midtrans')
+                ->whereIn('status', ['pending', 'failed'])
+                ->with('details')
+                ->first();
+        }
+
+        $initialItems = $returnedMidtrans?->status === 'failed'
+            ? $returnedMidtrans->details->map(fn ($detail) => [
+                'product_id' => $detail->product_id,
+                'qty' => $detail->qty,
+            ])->all()
+            : [];
+        $taxableAmount = $returnedMidtrans
+            ? (float) $returnedMidtrans->subtotal - (float) $returnedMidtrans->discount
+            : 0;
+        $initialTotals = $returnedMidtrans?->status === 'failed'
+            ? [
+                'discountPercent' => 0,
+                'discountAmount' => (float) $returnedMidtrans->discount,
+                'taxPercent' => $taxableAmount > 0
+                    ? (float) $returnedMidtrans->tax / $taxableAmount * 100
+                    : 0,
+                'otherFee' => (float) $returnedMidtrans->other_fee,
+            ]
+            : null;
+
         $nextTransactionId = (int) Transaction::max('id') + 1;
         $transactionNumber = 'TRX-'.now()->format('Ymd').'-'.str_pad((string) $nextTransactionId, 3, '0', STR_PAD_LEFT);
 
-return view('kasir.index', compact('products', 'transactionNumber'));    }
+        return view('kasir.index', compact(
+            'products',
+            'transactionNumber',
+            'returnedMidtrans',
+            'initialItems',
+            'initialTotals'
+        ));
+    }
 
-    public function store(Request $request): RedirectResponse
+    public function midtransReturn(Transaction $transaction): RedirectResponse
+    {
+        abort_unless(
+            $transaction->user_id === auth()->id()
+                && $transaction->payment_method === 'midtrans',
+            403
+        );
+
+        if ($transaction->status === 'pending') {
+            try {
+                $this->refreshMidtransStatus($transaction);
+                $transaction->refresh();
+            } catch (MidtransApiException $exception) {
+                if ($exception->getCode() === 404) {
+                    app(MidtransTransactionUpdater::class)->expireMissing($transaction);
+                    $transaction->refresh();
+                } else {
+                    Log::warning('Tidak dapat memverifikasi status pembayaran Midtrans saat kembali ke kasir.', [
+                        'transaction_id' => $transaction->id,
+                        'http_status' => $exception->getCode(),
+                    ]);
+
+                    return redirect()
+                        ->route('kasir.index')
+                        ->withErrors(['payment_method' => 'Status pembayaran belum dapat diverifikasi. Keranjang tetap disimpan; coba lagi sebentar.']);
+                }
+            }
+        }
+
+        if ($transaction->status === 'completed') {
+            return redirect()
+                ->route('kasir.index')
+                ->with('completedTransaction', $transaction->load('details'))
+                ->with('status', 'Pembayaran berhasil. Struk transaksi siap.');
+        }
+
+        return redirect()->route('kasir.index')->with('midtransReturnTransactionId', $transaction->id);
+    }
+
+    public function resumeMidtrans(Transaction $transaction): RedirectResponse
+    {
+        abort_unless(
+            $transaction->user_id === auth()->id()
+                && $transaction->payment_method === 'midtrans',
+            403
+        );
+
+        if ($transaction->status === 'pending') {
+            try {
+                $this->refreshMidtransStatus($transaction);
+                $transaction->refresh();
+            } catch (MidtransApiException $exception) {
+                if ($exception->getCode() === 404) {
+                    app(MidtransTransactionUpdater::class)->expireMissing($transaction);
+                    $transaction->refresh();
+                } else {
+                    Log::warning('Tidak dapat memeriksa pembayaran Midtrans sebelum dibuka kembali.', [
+                        'transaction_id' => $transaction->id,
+                        'http_status' => $exception->getCode(),
+                    ]);
+
+                    return redirect()
+                        ->route('kasir.index')
+                        ->withErrors(['payment_method' => 'Status pembayaran belum dapat diverifikasi. Coba lagi sebentar lagi.']);
+                }
+            }
+        }
+
+        if ($transaction->status === 'completed') {
+            return redirect()
+                ->route('kasir.index')
+                ->with('completedTransaction', $transaction->load('details'))
+                ->with('status', 'Pembayaran berhasil. Struk transaksi siap.');
+        }
+
+        if ($transaction->status === 'pending' && $transaction->midtrans_redirect_url) {
+            return redirect()->away($transaction->midtrans_redirect_url);
+        }
+
+        return redirect()
+            ->route('kasir.index')
+            ->with('midtransReturnTransactionId', $transaction->id)
+            ->with('status', 'Pembayaran Midtrans tidak selesai. Keranjang telah dipulihkan.');
+    }
+
+    public function store(Request $request, ReceiptPrinter $printer): RedirectResponse
     {
         $validated = $request->validate([
             'items' => ['required', 'array', 'min:1'],
@@ -48,15 +177,22 @@ return view('kasir.index', compact('products', 'transactionNumber'));    }
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'tax_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'other_fee' => ['nullable', 'numeric', 'min:0'],
-            'paid_amount' => ['required', 'numeric', 'min:0'],
-            'payment_method' => ['required', 'in:cash,qris,debit,credit,e_wallet,transfer'],
+            'paid_amount' => ['required_unless:payment_method,midtrans', 'nullable', 'numeric', 'min:0'],
+            'payment_method' => ['required', 'in:cash,qris,debit,credit,e_wallet,transfer,midtrans'],
         ], [
             'items.required' => 'Keranjang masih kosong.',
             'items.min' => 'Tambahkan minimal satu produk.',
             'paid_amount.required' => 'Masukkan jumlah uang dibayar.',
         ]);
 
-        $transaction = DB::transaction(function () use ($validated) {
+        $isMidtrans = $validated['payment_method'] === 'midtrans';
+        if ($isMidtrans && ! config('services.midtrans.server_key')) {
+            throw ValidationException::withMessages([
+                'payment_method' => 'MIDTRANS_SERVER_KEY belum dikonfigurasi.',
+            ]);
+        }
+
+        $transaction = DB::transaction(function () use ($validated, $isMidtrans) {
             $lines = [];
             $subtotal = 0;
 
@@ -90,9 +226,12 @@ return view('kasir.index', compact('products', 'transactionNumber'));    }
             $tax = max(0, $subtotal - $discount) * (float) ($validated['tax_percent'] ?? 0) / 100;
             $otherFee = (float) ($validated['other_fee'] ?? 0);
             $grandTotal = $subtotal - $discount + $tax + $otherFee;
-            $paidAmount = (float) $validated['paid_amount'];
+            if ($isMidtrans) {
+                $grandTotal = round($grandTotal);
+            }
+            $paidAmount = $isMidtrans ? 0 : (float) $validated['paid_amount'];
 
-            if ($paidAmount < $grandTotal) {
+            if (! $isMidtrans && $paidAmount < $grandTotal) {
                 throw ValidationException::withMessages([
                     'paid_amount' => 'Uang dibayar masih kurang dari total transaksi.',
                 ]);
@@ -107,9 +246,9 @@ return view('kasir.index', compact('products', 'transactionNumber'));    }
                 'other_fee' => $otherFee,
                 'grand_total' => $grandTotal,
                 'paid_amount' => $paidAmount,
-                'change_amount' => $paidAmount - $grandTotal,
+                'change_amount' => $isMidtrans ? 0 : $paidAmount - $grandTotal,
                 'payment_method' => $validated['payment_method'],
-                'status' => 'completed',
+                'status' => $isMidtrans ? 'pending' : 'completed',
             ]);
 
             $transaction->update([
@@ -133,10 +272,75 @@ return view('kasir.index', compact('products', 'transactionNumber'));    }
             return $transaction;
         }, 3);
 
+        if ($isMidtrans) {
+            return $this->createMidtransCheckout($transaction, $request);
+        }
+
+        $receiptPrintError = null;
+
+        try {
+            $printer->print($transaction->load('details'));
+        } catch (Exception $exception) {
+            Log::error('Transaksi tersimpan, tetapi struk gagal dicetak.', [
+                'transaction_id' => $transaction->id,
+                'exception' => $exception,
+            ]);
+            $receiptPrintError = 'Transaksi tersimpan, tetapi struk gagal dicetak. Periksa koneksi printer.';
+        }
+
         event(new OrderPlaced($transaction, $request->user()));
 
-        return redirect()
+        $response = redirect()
             ->route('kasir.index')
             ->with('completedTransaction', $transaction->load('details'));
+
+        return $receiptPrintError
+            ? $response->with('receiptPrintError', $receiptPrintError)
+            : $response->with('status', 'Transaksi tersimpan dan struk berhasil dicetak.');
+    }
+
+    private function refreshMidtransStatus(Transaction $transaction): void
+    {
+        $status = app(MidtransService::class)->getTransactionStatus($transaction->transaction_number);
+        app(MidtransTransactionUpdater::class)->apply(
+            $transaction,
+            $status['transaction_status'],
+            $status['fraud_status'] ?? null,
+            (string) $status['gross_amount']
+        );
+    }
+
+    private function createMidtransCheckout(Transaction $transaction, Request $request): RedirectResponse
+    {
+        try {
+            $snap = app(MidtransService::class)->createSnapTransaction($transaction);
+        } catch (MidtransApiException $exception) {
+            $transaction->load('details');
+            DB::transaction(function () use ($transaction) {
+                foreach ($transaction->details as $detail) {
+                    Product::query()->whereKey($detail->product_id)
+                        ->lockForUpdate()
+                        ->increment('stock', $detail->qty);
+                }
+                $transaction->update(['status' => 'failed']);
+            });
+
+            Log::warning('Midtrans menolak pembuatan pembayaran.', [
+                'transaction_id' => $transaction->id,
+                'http_status' => $exception->getCode(),
+            ]);
+
+            return redirect()
+                ->route('kasir.index')
+                ->withInput($request->except('_token'))
+                ->withErrors(['payment_method' => 'Midtrans menolak pembayaran. Periksa key dan mode Sandbox.']);
+        }
+
+        $transaction->update([
+            'midtrans_token' => $snap['token'],
+            'midtrans_redirect_url' => $snap['redirect_url'],
+        ]);
+
+        return redirect()->away($snap['redirect_url']);
     }
 }

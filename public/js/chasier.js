@@ -22,15 +22,26 @@
         const product = products.get(Number(item.product_id));
         if (product) cart.set(product.id, { product, qty: Math.min(product.stock, Math.max(1, Number(item.qty) || 1)) });
     });
+    if (config.initialTotals) {
+        byId('discountPercent').value = config.initialTotals.discountPercent;
+        byId('discountAmount').value = config.initialTotals.discountAmount;
+        byId('taxPercent').value = config.initialTotals.taxPercent;
+        byId('otherFee').value = config.initialTotals.otherFee;
+    }
+    byId('paymentMethod').value = config.paymentMethod || 'cash';
 
     function calculate() {
         const subtotal = [...cart.values()].reduce((sum, item) => sum + item.product.price * item.qty, 0);
         const discount = Math.min(subtotal, subtotal * Math.min(100, numberValue('discountPercent')) / 100 + numberValue('discountAmount'));
         const tax = Math.max(0, subtotal - discount) * Math.min(100, numberValue('taxPercent')) / 100;
-        const total = Math.max(0, subtotal - discount + tax + numberValue('otherFee'));
-        const paid = numberValue('paidAmount');
-        const balance = paid - total;
+        const isMidtrans = byId('paymentMethod').value === 'midtrans';
+        const calculatedTotal = Math.max(0, subtotal - discount + tax + numberValue('otherFee'));
+        const total = isMidtrans ? Math.round(calculatedTotal) : calculatedTotal;
+        const paid = isMidtrans ? total : numberValue('paidAmount');
+        const balance = isMidtrans ? 0 : paid - total;
 
+        byId('paidAmount').required = !isMidtrans;
+        byId('paidBlock').hidden = isMidtrans;
         byId('subtotalDisplay').textContent = money(subtotal);
         byId('grandTotalDisplay').textContent = money(total);
         byId('changeLabel').textContent = balance < 0 ? 'Uang kurang' : 'Kembalian';
@@ -180,7 +191,8 @@
     byId('cartRows').addEventListener('change', (event) => {
         if (event.target.dataset.action === 'quantity') updateProductQuantity(Number(event.target.closest('tr').dataset.productId), Math.max(1, Number(event.target.value) || 1));
     });
-    ['discountPercent', 'discountAmount', 'taxPercent', 'otherFee', 'paidAmount'].forEach((id) => byId(id).addEventListener('input', calculate));
+    ['discountPercent', 'discountAmount', 'taxPercent', 'otherFee', 'paidAmount', 'paymentMethod'].forEach((id) => byId(id).addEventListener('input', calculate));
+    byId('paymentMethod').addEventListener('change', calculate);
     byId('holdTransaction').addEventListener('click', () => {
         if (!cart.size) return;
         localStorage.setItem(storageKey, JSON.stringify({
@@ -214,7 +226,7 @@
         } else if (event.key === 'F4') {
             event.preventDefault();
             if (cart.size && calculate().balance >= 0) form.requestSubmit();
-            else byId('paidAmount').focus();
+            else if (byId('paymentMethod').value !== 'midtrans') byId('paidAmount').focus();
         } else if (event.key === 'Escape') {
             byId('productResults').hidden = true;
             byId('productSearch').setAttribute('aria-expanded', 'false');

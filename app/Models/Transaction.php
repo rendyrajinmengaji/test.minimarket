@@ -24,6 +24,8 @@ class Transaction extends Model
         'change_amount',
         'payment_method',
         'status',
+        'midtrans_token',
+        'midtrans_redirect_url',
     ];
 
     protected $casts = [
