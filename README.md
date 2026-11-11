@@ -49,6 +49,25 @@ We would like to extend our thanks to the following sponsors for funding Laravel
 - **[byte5](https://byte5.de)**
 - **[OP.GG](https://op.gg)**
 
+## Cetak struk thermal
+
+Instal driver ESC/POS:
+
+```bash
+composer require mike42/escpos-php
+```
+
+Set koneksi printer pada `.env`. Untuk printer jaringan, gunakan alamat IP yang dapat dijangkau dari server Laravel:
+
+```dotenv
+RECEIPT_STORE_NAME="MINIMARKET"
+RECEIPT_PRINTER_CONNECTION=network
+RECEIPT_PRINTER_HOST=192.168.1.100
+RECEIPT_PRINTER_PORT=9100
+```
+
+Untuk printer yang sudah terpasang di Windows, pilih `RECEIPT_PRINTER_CONNECTION=windows` dan isi `RECEIPT_WINDOWS_PRINTER` dengan nama printer Windows. Transaksi yang berhasil disimpan akan langsung dicetak oleh server. Jika printer tidak tersedia, transaksi tetap tersimpan dan kasir mendapat pesan agar dapat mencoba cetak ulang.
+
 ## Contributing
 
 Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
