@@ -18,7 +18,7 @@ class Transaction extends Model
         'subtotal',
         'discount',
         'tax',
-        'other_fee',
+        'other_fee', 
         'grand_total',
         'paid_amount',
         'change_amount',

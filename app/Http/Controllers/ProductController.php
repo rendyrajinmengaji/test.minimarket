@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -12,14 +13,19 @@ class ProductController extends Controller
 {
     public function index(): View
     {
-        $products = Product::latest()->paginate(10);
+        $products = Product::with('category')->latest()->paginate(10);
 
         return view('products.index', compact('products'));
     }
 
     public function create(): View
     {
-        return view('products.create', ['product' => new Product()]);
+        $categories = Category::query()->orderBy('name')->pluck('name', 'id');
+
+        return view('products.create', [
+            'product' => new Product(),
+            'categories' => $categories,
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -34,12 +40,16 @@ class ProductController extends Controller
 
     public function show(Product $product): View
     {
+        $product->load('category');
+
         return view('products.show', compact('product'));
     }
 
     public function edit(Product $product): View
     {
-        return view('products.edit', compact('product'));
+        $categories = Category::query()->orderBy('name')->pluck('name', 'id');
+
+        return view('products.edit', compact('product', 'categories'));
     }
 
     public function update(Request $request, Product $product): RedirectResponse
@@ -65,7 +75,7 @@ class ProductController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'product_code' => ['nullable', 'string', 'max:100', Rule::unique('products', 'product_code')->ignore($request->route('product'))],
             'barcode' => ['nullable', 'string', 'max:100', Rule::unique('products', 'barcode')->ignore($request->route('product'))],
-            'category' => ['nullable', 'string', 'max:255'],
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
             'description' => ['nullable', 'string'],
             'price' => ['required', 'numeric', 'min:0'],
             'stock' => ['required', 'integer', 'min:0'],

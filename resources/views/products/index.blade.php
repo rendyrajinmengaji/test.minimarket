@@ -51,8 +51,8 @@
                                     <small class="d-block text-muted">{{ \Illuminate\Support\Str::limit($product->description, 70) }}</small>
                                 @endif
                             </td>
-                            <td>{{ $product->category ?: '-' }}</td>
-                            <td>Rp {{ number_format((float) $product->price, 2, ',', '.') }}</td>
+                            <td>{{ $product->category?->name ?? '-' }}</td>
+                            <td>Rp {{ number_format((float) $product->price, 0, ',', '.') }}</td>
                             <td>{{ number_format($product->stock) }}</td>
                             <td>
                                 <span class="badge {{ $product->is_active ? 'bg-light-success text-success' : 'bg-light-secondary text-secondary' }}">

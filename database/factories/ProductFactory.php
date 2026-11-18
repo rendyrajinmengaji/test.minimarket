@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -62,14 +63,15 @@ class ProductFactory extends Factory
             ],
         ];
 
-        $category = fake()->randomElement(array_keys($catalog));
+        $categoryName = fake()->randomElement(array_keys($catalog));
+        $category = Category::query()->firstOrCreate(['name' => $categoryName]);
         $stock = fake()->numberBetween(0, 100);
 
         return [
-            'name' => fake()->randomElement($catalog[$category]),
-            'category' => $category,
+            'name' => fake()->randomElement($catalog[$categoryName]),
+            'category_id' => $category->id,
             'description' => fake()->optional()->sentence(),
-            'price' => 1,
+            'price' => 1000,
             'stock' => $stock,
             'image' => null,
             'is_active' => $stock > 0,

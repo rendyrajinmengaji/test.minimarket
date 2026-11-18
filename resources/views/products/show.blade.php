@@ -22,9 +22,9 @@
             <table class="table table-borderless align-middle mb-0">
                 <tbody>
                     <tr><th scope="row" class="w-25">Nama</th><td>{{ $product->name }}</td></tr>
-                    <tr><th scope="row">Kategori</th><td>{{ $product->category ?: '-' }}</td></tr>
+                    <tr><th scope="row">Kategori</th><td>{{ $product->category?->name ?? '-' }}</td></tr>
                     <tr><th scope="row">Deskripsi</th><td>{{ $product->description ?: '-' }}</td></tr>
-                    <tr><th scope="row">Harga</th><td>Rp {{ number_format((float) $product->price, 2, ',', '.') }}</td></tr>
+                    <tr><th scope="row">Harga</th><td>Rp {{ number_format((float) $product->price, 0, ',', '.') }}</td></tr>
                     <tr><th scope="row">Stock</th><td>{{ number_format($product->stock) }}</td></tr>
                     <tr><th scope="row">Image</th><td>{{ $product->image ?: '-' }}</td></tr>
                     <tr>

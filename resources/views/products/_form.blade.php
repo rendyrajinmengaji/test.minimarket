@@ -6,9 +6,14 @@
     </div>
 
     <div class="col-md-6">
-        <label for="category" class="form-label">Kategori</label>
-        <input id="category" name="category" type="text" class="form-control @error('category') is-invalid @enderror" value="{{ old('category', $product->category) }}" maxlength="255">
-        @error('category')<div class="invalid-feedback">{{ $message }}</div>@enderror
+        <label for="category_id" class="form-label">Kategori</label>
+        <select id="category_id" name="category_id" class="form-select @error('category_id') is-invalid @enderror">
+            <option value="">Pilih kategori</option>
+            @foreach ($categories as $id => $name)
+                <option value="{{ $id }}" @selected((string) old('category_id', $product->category_id) === (string) $id)>{{ $name }}</option>
+            @endforeach
+        </select>
+        @error('category_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
     </div>
 
     <div class="col-md-6">

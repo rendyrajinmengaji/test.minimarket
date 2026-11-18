@@ -119,11 +119,11 @@ class MidtransPaymentTest extends TestCase
         ]);
     }
 
-    public function test_product_factory_sets_dummy_product_price_to_one_rupiah(): void
+    public function test_product_factory_sets_dummy_product_price_to_one_thousand_rupiah(): void
     {
         $product = Product::factory()->make();
 
-        $this->assertSame('1.00', $product->price);
+        $this->assertSame('1000.00', $product->price);
     }
 
     public function test_returning_from_snap_with_pending_payment_can_open_the_existing_checkout(): void

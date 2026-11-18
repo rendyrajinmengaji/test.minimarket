@@ -40,6 +40,12 @@
                         </a>
                     </li>
                     @if (auth()->user()->role === 'admin')
+                        <li class="pc-item {{ request()->routeIs('admin.orders.*') ? 'active' : '' }}">
+                            <a href="{{ route('admin.orders.index') }}" class="pc-link">
+                                <span class="pc-micon"><i class="ti ti-shopping-cart"></i></span>
+                                <span class="pc-mtext">Pesanan</span>
+                            </a>
+                        </li>
                         <li class="pc-item {{ request()->routeIs('products.*') ? 'active' : '' }}">
                             <a href="{{ route('products.index') }}" class="pc-link">
                                 <span class="pc-micon"><i class="ti ti-package"></i></span>
